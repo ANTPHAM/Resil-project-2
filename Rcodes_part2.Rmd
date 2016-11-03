@@ -1,0 +1,839 @@
+---
+title: ' Praticing Statistical Analysis &  Machine Learning Techniques- Cancellation
+  Risks in Insurance Contracts-Part 2'
+author: "Antoine.T.PHAM/ Data Science Courses-DSSP 4/ Polytechnique Paris"
+date: "Mai-October 2016"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 5
+  pdf_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: 5
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, cache = TRUE, autodep = TRUE, tidy = FALSE, error = FALSE)
+```
+
+
+# Introduction
+
+For pursuing our data project, I'm going to develop my previous work which was introduced in the part 1. According to our organization's business needs , binary classification problem will be took into account in this section. The target will have 2 classes : 0 = no cancelled and 1 = cancelled contract. Futhermore, a set of the features concerning critical business metrics in which our business team is interested will be selected. First, I will try to show the dependency of variables with the target by using somme visual analysis. Machine larning by classification approaches then will be applied for buiding predictive models. 
+
+Let's load somme packages
+
+```{r }
+library(knitr)
+library(rmarkdown)
+library(caret)
+library(rpart)
+library(randomForest)
+library(ggplot2)
+
+```
+
+# Data Preparation and Exploration
+
+Let's load & read the Data
+
+```{r reading data}
+df<- read.csv("C:/Users/PB00193/Desktop/Project Resil/medical cost1/BASE_ANALYSE_V61.csv",sep=";")
+#df<- read.csv("E:/Project Resil/medi 1/BASE_ANALYSE_V61.csv",sep=";")
+dim(df)
+colnames(df)
+```
+
+Making a data subset for modeling ( choice based on previous works related to variable importance and our discussions ,furthermore our models will have 2 classes of the target instead of 3  )
+
+```{r subset data}
+varname<-names(df)%in%c("TOP_RESIL","ADH_OFC","AFF_FM_TAUXSAL","ADIFUE","CTCO_NB_VISITE","CTCO_NB_TELSORTANT","CTCO_NB_SIM","CTAD_NB_TELSORTANT","CTCO_NB_TELENTRANT","CTX_TOPRJ",
+                        "CTCO_NB_HORSFM","CTAD_NB_FM","CTCO_NB_FM","CTAD_NB_TELENTRANT","CTAD_NB_INA","CTAD_NB_HORSFM","CTAD_DELAI_FM","CTAD_DELAI_INAFM",
+                        "CTAD_DELAI_TELSORTANT","AFF_FM_NBSAL","CTCO_DELAI_FM","CTCO_DELAI_SIM","CTCO_DELAI_TELENTRANT","CTCO_DELAI_TELSORTANT","CTAD_DELAI_INA",
+                        "CTCO_DELAI_VISITE","CTAD_DELAI_TELENTRAN","CGAFM_N","CTAD_DELAI_HORSFM","PRESTFM_N","ADH_DUREE","ENT_ANCIENNETE","CTCO_DELAI_HORSFM","AGE_MOYEN",
+                        "CTAD_NB_INAFM","CTX_TOPLJ","ENT_TOPMAIL","TIERS_TOPCPT","ENT_TOPTELPORT","ENT_CHEF","ENT_TYPGRPE","ENT_DR")
+
+df1<-df[varname]
+# checking columns names
+colnames(df1)
+#checking new data dimensions
+dim(df1)
+```
+
+
+
+Grouping the targets into 2 classes: 0 = ' no cancel' et 1 = 'cancel', the class " resiliation partielle" will be merged with the class " resiliation totale"
+```{r groupe target}
+df1$target<-ifelse(df1$TOP_RESIL==0,"0","1")
+df1$target<-as.factor(df1$target)
+# drop off Top-resil variable
+df1<-df1[-1]
+str(df1)
+
+```
+
+Let's see the target frequencies
+```{r}
+tab<-as.data.frame(table(df1$target))
+colnames(tab)<- c('Resiliation', 'Frequence')
+tab
+```
+
+
+Imputing median value to variable : "Age_moyen"
+```{r}
+# replace Na's by median for Age_moyen variable
+df1$AGE_MOYEN[is.na(df1$AGE_MOYEN)]<- median(df1$AGE_MOYEN,na.rm = TRUE)
+```
+
+Converting variable type
+```{r converting variables}
+
+# to factor
+to.factors<- function ( df,variables){
+  for (variable in variables){
+    df[[variable]]<- as.factor(df[[variable]])
+  }
+  return(df)
+}
+
+categoric.vars<- c('ENT_DR','ENT_TOPTELPORT','ENT_TOPMAIL','ENT_DR','ENT_CHEF','TIERS_TOPCPT','CTX_TOPLJ','CTX_TOPRJ','ADH_OFC','ADIFUE')
+df1<- to.factors(df1,categoric.vars)
+
+#to numeric
+
+to.numerics<- function ( df,variables){
+  for (variable in variables){
+    df[[variable]]<- as.numeric(df[[variable]])
+  }
+  return(df)
+}
+integre.vars<- c('ENT_ANCIENNETE','CTAD_NB_FM','CTCO_NB_FM','CTAD_NB_HORSFM','CTCO_NB_HORSFM','CTAD_NB_INA','CTAD_NB_INAFM',
+                 'CTCO_NB_VISITE','CTCO_NB_SIM','CTAD_NB_TELENTRANT','CTAD_NB_TELSORTANT','CTCO_NB_TELENTRANT',
+                 'CTCO_NB_TELSORTANT','AFF_FM_NBSAL','CTAD_DELAI_FM','CTCO_DELAI_HORSFM','CTAD_DELAI_INA','CTAD_DELAI_INAFM','CTCO_DELAI_VISITE', 'CTCO_DELAI_SIM','CTAD_DELAI_TELSORTANT','CTCO_DELAI_TELENTRANT','CTCO_DELAI_TELSORTANT','CTCO_DELAI_FM','CTAD_DELAI_HORSFM')
+                
+df1<-to.numerics(df1,integre.vars)
+
+```
+
+
+
+# Visualization- Variable importance through Visual analysis (Cross-plot & Density Histogram Analysis)
+
+We firstly apply crossing plot technique to categorical variables
+
+
+Getting started with the variable 'ENT_TYPGR'
+
+```{r include=TRUE, cache=FALSE }
+library(funModeling)
+cross_plot(data=df1, str_input = "ENT_TYPGRPE", str_target="target")
+```
+
+ENT_TYPGR seems to be relevant since being in 'Groupe Regional' or ' Grand Groupe' increseas the probabilities to cancel contracts compared with being in the 'Hors Groupe' ( 21.1% , 18.2% and 8.6%  respectively)
+
+And now by other categorical variables
+```{r include=TRUE, cache=FALSE}
+
+cross_plot(data=df1, str_target="target", str_input = "ENT_CHEF")
+cross_plot(data=df1, str_target="target", str_input = 'ADH_OFC')
+cross_plot(data=df1, str_target="target", str_input = 'ADIFUE')
+cross_plot(data=df1, str_target="target", str_input = 'ENT_DR')
+cross_plot(data=df1, str_target="target", str_input = 'TIERS_TOPCPT')
+cross_plot(data=df1, str_target="target", str_input = 'CTX_TOPRJ')
+cross_plot(data=df1, str_target="target", str_input = 'CTX_TOPLJ')
+
+```
+
+Making somme interpretations
+
+- Is "CTX_LJ" a good predictor for the target of the model?
+
+This variable seems to be a good predictor  since the likelihood of having " Resilie =1 " is different given the CTX_LJ=0 or CTX_LJ=1 groups.The "Resilie" rate for CTX_LJ=1 is six times higher than the " Resilie" rate for CTX_LJ=0 (48.9% vs 8.1%, respectively).
+
+- You can see that except "ENT_DR",all other categorical variables seems to be relevant , since they seperate the target well.
+
+Now, let's make cross-plot by numeric variales
+
+
+```{r include=TRUE, cache=FALSE}
+cross_plot(data=df1, str_target="target", str_input = c('AFF_FM_TAUXSAL','AFF_FM_NBSAL','PRESTFM_N','CGAFM_N',
+             'CTAD_NB_TELENTRANT','CTAD_NB_TELSORTANT','CTAD_DELAI_TELSORTANT','CTAD_NB_FM',
+             'CTAD_NB_HORSFM','CTAD_DELAI_FM','CTAD_DELAI_HORSFM','CTAD_NB_INA','CTAD_DELAI_INA','CTAD_NB_INAFM',
+             'CTAD_DELAI_INAFM','CTCO_NB_FM','CTCO_DELAI_FM','CTCO_NB_HORSFM','CTCO_DELAI_HORSFM','CTCO_NB_VISITE',
+             'CTCO_DELAI_VISITE','CTCO_NB_SIM','CTCO_DELAI_SIM','CTCO_NB_TELENTRANT','CTCO_DELAI_TELENTRANT',
+             'CTCO_NB_TELSORTANT','CTCO_DELAI_TELSORTANT','ENT_ANCIENNETE','ADH_DUREE'),auto_binning = TRUE)
+```
+
+Somme more interpretations
+
+- ENT_Anciennete shows a linear and positive relationship with the Target (  value at N < value at N+1 ). However, the bucket 2138-3044 adds a little noise in this relationship.
+
+- The more CTAD_delai_INAFM is recent, the more there are cancelled contracts ( see the 2 first buckets at the first glance)
+
+- No commercial visite seems to have a positive correlation to contract cancellation ( see CTCO_NB_VISITE at the bucket 0 where the number of cancelled contracts increase to 11.9% )
+
+Now, we will make somme Density Histograms for refleting mean differencies instead of statistical test 
+
+```{r include=TRUE, cache=FALSE}
+library(funModeling)
+plotar(data=df1, str=c('AFF_FM_TAUXSAL',
+             'CTAD_DELAI_TELSORTANT',
+             'CTAD_DELAI_FM','CTAD_DELAI_HORSFM','CTAD_DELAI_INA',
+             'CTAD_DELAI_INAFM','CTCO_DELAI_FM','CTCO_DELAI_HORSFM',
+             'CTCO_DELAI_VISITE','CTCO_DELAI_SIM','CTCO_DELAI_TELENTRANT',
+             'CTCO_DELAI_TELSORTANT','ENT_ANCIENNETE','ADH_DUREE'),str_target="target", plot_type = "histdens")
+
+```
+
+Checking correlation  for all numeric variables (only) against target variable
+
+```{r}
+correlation_table(data = df1,str_target = "target")
+```
+
+
+#Tree decision ( without k-fold Cross_validation)
+
+Splitting train&test set
+```{r split data}
+# split tree
+split=0.8
+traininex<-createDataPartition(df1$target,p=split,list = FALSE)
+trainset<-df1[traininex,]
+testset<-df1[-traininex,]
+
+```
+
+Checking dimensions
+
+```{r}
+dim(trainset)
+dim(testset)
+```
+
+
+1st attempt with a Tree model ( by using rpart package and no particular data preprocessing)
+```{r 1st tree}
+# fit the model
+set.seed(2411)
+modeltree<-rpart(target~., data = trainset, method= "class",control=rpart.control(minsplit = 100,minbucket = 20, maxdepth = 10,cp=0.001))
+# make predictions
+x_test <- testset[,1:40]
+y_test <- testset[,41]
+predictions <- predict(modeltree, x_test, type = 'class')
+# summarize results
+confusionMatrix(predictions, y_test)
+```
+Note: good accuracy (0.93) but poor specificity rate (0.33). Note: we are interested in the model 's specificity rate = TP/(TP+FN); since it reflete the accuracy of the model regarding the class ' 1 = résiliés'.
+
+
+Let's visualising the tree and  parameters: complexity parameter(cp) and  size of tree
+```{r fig.width=18, fig.height=18}
+plot(modeltree, uniform=TRUE, 
+     main="1st Tree Classification ", margin=0.4)
+text(modeltree, use.n=TRUE, all=TRUE, cex=.7)
+```
+Checking the cp number 
+```{r fig.width=18, fig.height=18}
+plotcp(modeltree)
+printcp(modeltree)
+
+```
+
+
+2nd attempt with a Tree model: increasing the maximum node of the tree and decreasing the cp value
+```{r 2nd tree}
+# fit the 2nd tree model
+set.seed(1412)
+modeltree1<-rpart(target~., data = trainset, method= "class",control=rpart.control(minsplit = 50,minbucket = 20, maxdepth = 20,cp=0.0005))
+#make predictions
+set.seed(0712)
+predictions1 <- predict(modeltree1, x_test, type = 'class')
+# summarize results
+confusionMatrix(predictions1, y_test)
+```
+We have just got a little better score ( 0.94 for accuracy & 0.45 for specificity) with a deeper tree having a small 'cp' value
+
+```{r fig.width=18, fig.height=18}
+plot(modeltree1, uniform=TRUE, 
+     main="2 nd Tree Classification", margin=0.2)
+text(modeltree1, use.n=TRUE, all=TRUE, cex=.5)
+```
+
+Checking Cp and prediction results again
+```{r fig.width=20, fig.height=28}
+plotcp(modeltree1)
+printcp(modeltree1)
+
+```
+
+Now, let's try to improve our tree model with pruning practice
+
+We're prunning the tree using the best cp
+```{r prune}
+# getting the best cp.
+bestcp <- modeltree1$cptable[which.min(modeltree1$cptable[,"xerror"]),"CP"]
+bestcp
+
+# pruning the tree with the best cp
+set.seed(3004)
+tree.pruned <- prune(modeltree1, cp = bestcp,surrogatestyle=1)
+
+
+```
+
+Making predictions with the pruned tree
+
+```{r}
+predictprune<- predict(tree.pruned,x_test,type="class")
+# and check the result by confusion matrix 
+confusionMatrix(predictprune,y_test)
+```
+Note: No better specificty rate  with the pruned tree.
+
+By default, the threshold the model use to predict is fixed at 0.5. Tuning this parameter might be a good solution for obtaining a better specificity rate.
+
+```{r}
+# making output class by probability mesure
+predictpruneprob<-predict(tree.pruned,x_test,type="prob")
+# fix the threshold at 0.3
+predictionstreeprob<- ifelse(predictpruneprob[,2] >=0.3,1,0)
+head(predictionstreeprob,2)
+confusionMatrix(predictionstreeprob,y_test)
+
+```
+
+Let's take a look now at a curve showing Sensitivity vs. Specificity evolution
+
+```{r}
+performanceTree<-prediction(predictionstreeprob,y_test)
+performanceTree<-performance(performanceTree, measure = "spec",x.measure = "sens")
+plot(performanceTree)
+
+```
+
+
+# Handling with data ( more)
+
+Checking for missing values and look how many unique values there are for each variable
+```{r impute 0}
+df2<-df1
+sapply(df2,function(x) sum(is.na(x)))
+```
+
+Imputing 0 au Na's values; make sure that there is one missing value for a time variable ( délai) when the value of the number variable ( nombre) is equal to zero
+
+```{r}
+df2[is.na(df2)]<-0
+df_status(df2)
+#write.csv(df2,"C:/Users/PB00193/Desktop/Project Resil/medical cost1/df2.csv")
+```
+
+# Tree with K-fold Cross-validation 
+
+Let's make  k-fold CV  with the package 'caret'
+```{r make kfold}
+train_control <- trainControl(method="repeatedcv", number=10, repeats=3)
+```
+
+Now, let's split the data and fit a model
+
+```{r}
+set.seed(2014)
+split=0.8
+traininex1<-createDataPartition(df2$target,p=split,list = FALSE)
+trainset1<-df2[traininex1,]
+testset1<-df2[-traininex1,]
+```
+
+And fit a Tree model with train test et test set
+
+```{r new tree}
+
+modeltreecv1 <- train(target~., data=trainset1, trControl=train_control, method="rpart")
+predictionstreecv1<- predict(modeltreecv1,testset1[,1:40])
+confusionMatrix(predictionstreecv1,testset1[,41])
+```
+No good specificity rate
+
+- Specificity rate has been not improved by k-fold cross-validation technique
+
+# Bagging , Random Forest & Boosting
+
+- Fistly, we are going to apply Bagging technique in order to perform tree based models
+```{r include=TRUE,cache=FALSE}
+set.seed(2411)
+library(ipred)
+modelbagging<- bagging(target~ .,data = trainset1)
+predictions.bag <- predict(modelbagging, testset1[,1:40], type="class")
+#saving this model
+#saveRDS(fit,"E:/Project Resil/medi 1/baggingmodel.rds")
+#loading the model
+#modelbagging<-readRDS("E:/Project Resil/medi 1/baggingmodel.rds")
+#make a new prediction on new data using this bagging model
+#newpredict<-predict(modelbagging,newdatatest[,:])
+#confusionMatrix(...)
+```
+Checking accuracy metrics
+```{r}
+confusionMatrix(predictions.bag,testset1$target)
+
+```
+
+Note:  we have got a good accuracy and a small improvement in temrs of specificity rate  but that's stil not satisfying.
+
+Let's set the threshold at 0.3
+```{r }
+predictions.bagprob <- predict(modelbagging, testset1[,1:40], type="prob")
+head(predictions.bagprob,2)
+predictions.bagprob<- ifelse(predictions.bagprob[,2] >=0.3,1,0)
+confusionMatrix(predictions.bagprob,testset1$target)
+```
+
+Sensitivity vs. Specificity by ROC plot ( Bagging model)
+
+```{r}
+library(ROCR)
+performanceBag<-prediction(predictions.bagprob,testset1$target)
+performanceBag<-performance(performanceBag, measure = "spec",x.measure = "sens")
+plot(performanceBag)
+
+```
+
+
+-  Random Forest 
+```{r}
+library(randomForest)
+# fit the model
+modelRF<- randomForest(target~ ., data = trainset1, mtry=8, ntree=500,importance=TRUE, type='Classification')
+modelRF
+#saveRDS(modelRF,"E:/Project Resil/medi 1/RFmodel.rds")
+# make predictions
+predictionsRF<- predict(modelRF,newdata= testset1)
+confusionMatrix(predictionsRF,testset1$target)
+
+```
+
+Good result for the accuracy (0.94) but not the case for Specificity (0.45)
+
+Checking variable importance 
+
+```{r fig.width=20, fig.height=28}
+importance(modelRF)
+varImpPlot(modelRF)
+```
+
+```{r}
+plot(predictionsRF,testset1$target)
+abline(0,1)
+```
+
+Using the threshold = 0.3
+```{r}
+predictionsRFprob<- predict(modelRF,newdata= testset1, type = "prob")
+predictionsRFprob<- ifelse(predictionsRFprob[,2] >=0.3,1,0)
+confusionMatrix(predictionsRFprob,testset1$target)
+
+```
+
+Sensitivity vs. Specificity by ROC plot ( Random Forest model)
+
+```{r}
+library(ROCR)
+performanceRF<-prediction(predictionsRFprob,testset1$target)
+performanceRF<-performance(performanceRF, measure = "spec",x.measure = "sens")
+plot(performanceRF)
+
+```
+
+- Boosting technique with GBM package
+
+Trying a Gradient Boosting first.
+We use the distribution ' bernouilli' since we have a binary classification problem and apply GB algorithm.
+```{r gbm model}
+set.seed(1805)
+library(gbm)
+modelboost<-gbm.fit(x=trainset1[,1:40],y=as.vector(trainset1$target),distribution = "bernoulli", interaction.depth = 5,n.trees =200,train.fraction = 0.5,shrinkage = 0.1,n.minobsinnode = 30)
+#saveRDS(modelboost,"E:/Project Resil/medi 1/GBmodel.rds")
+```
+
+Finding out the best iteration number and checking relative influence statistics
+
+```{r}
+
+best.iter <- gbm.perf(modelboost,method="test")
+print(best.iter)
+# checking relative influence by using different numbers of trees
+summary(modelboost,n.trees=1) # based on the first tree
+summary(modelboost,n.trees=best.iter) # based on the best iteration number
+
+```
+
+
+Making predictions by using the best number of trees
+
+```{r}
+set.seed(0610)
+predictionsboost<- predict(modelboost,newdata = testset1[,1:40],n.trees = 197,type = 'response')
+```
+Checking prediction outputs
+```{r}
+range(predictionsboost)
+hist(predictionsboost)
+```
+Note: the outputs have been already ranged from 0 to 1
+
+Since the data set is highly imbalanced as we coul see so far, a threshold other than 0.5 might be useful to make good predictions.Let's fix it at 0.3 again
+
+```{r}
+predictionsboost<- ifelse(predictionsboost >=0.3,1,0)
+```
+
+Let's evaluate prediction performance
+```{r}
+confusionMatrix(predictionsboost,testset1$target)
+
+```
+
+Not too bad with the accuracy =0.9 and the specificity rate = 0.82
+
+Now, checking model performance  by a ROC showing  Sensitivity vs. Specificity 
+
+```{r}
+library(ROCR)
+performanceGbm<-prediction(predictionsboost,testset1$target)
+performanceGbm<-performance(performanceGbm, measure = "spec",x.measure = "sens")
+plot(performanceGbm)
+
+```
+
+And taking a look at the AUC metric
+
+```{r}
+performanceGbm<-prediction(predict(modelboost,newdata = testset1[,1:40],n.trees = 197,type = 'response'),testset1$target)
+auc<- performance(performanceGbm,measure = "auc")
+auc<-auc@y.values[[1]]
+auc 
+
+```
+Good result by AUC = 0.95
+
+
+
+- ADAboost
+
+```{r Adaboost model}
+set.seed(0610)
+modelAdaboost<-gbm.fit(x=trainset1[,1:40],y=as.vector(trainset1$target),distribution = "adaboost", interaction.depth = 5,n.trees =1000,train.fraction = 0.5,shrinkage = 0.05,n.minobsinnode = 10)
+best.iter <- gbm.perf(modelAdaboost,method="test")
+print(best.iter)
+#saveRDS(modelAdaboost,"E:/Project Resil/medi 1/Adaboostgmodel.rds")
+
+
+```
+
+We now use the boosted model to predict the target in the test set
+
+```{r}
+set.seed(0505)
+predictionsAdaboost<- predict(modelAdaboost,newdata = testset1[,1:40],n.trees = 793,type = "response")
+# and check the outputs
+head(predictionsAdaboost)
+range(predictionsAdaboost)
+hist(predictionsAdaboost)
+```
+
+Using threshold fixed at 0.3
+```{r}
+predictionsAdaboost<- ifelse(predictionsAdaboost >=0.3,1,0)
+```
+
+Checking prediction performance
+```{r}
+confusionMatrix(predictionsAdaboost,testset1$target)
+
+```
+Accuracy = 0.9 and Specificity rate = 0.81, that's not too bad result
+
+Sensitivity vs. Specificity plot( ADABOOST)
+
+```{r}
+performanceAdb<-prediction(predictionsAdaboost,testset1$target)
+performanceAdbROC<-performance(performanceAdb, measure = "spec",x.measure = "sens")
+plot(performanceAdbROC)
+
+```
+
+
+- Gradien Boosting Model ( with caret package)
+
+Fitting the model
+```{r gbm }
+
+gbmmodel<-train(target~., data=trainset1, trControl=trainControl(method="repeatedcv", number=10,repeats=3), method="gbm", verbose=FALSE)
+#saveRDS(gbm,"E:/Project Resil/medi 1/GBMcaretmodel.rds")
+#GBMcaretmodel<- readRDS("E:/Project Resil/medi 1/GBMcaretmodel.rds")
+#preditionsgbm_prob<- predict(gbmmodel, testset1[,1:40],type = "prob")
+```
+
+Make predictions
+```{r}
+
+predictionsgbm<- predict(gbmmodel, testset1[,1:40])
+confusionMatrix(predictionsgbm,testset1[,41])
+summary(gbmmodel)
+plot(gbmmodel)
+plot(gbmmodel,plotType = "level")
+
+```
+
+Make predictions by tuning the threshold at 0.3
+```{r}
+predictionsgbmprob <- predict(gbmmodel, testset1[,1:40], type="prob")
+hist(predictionsgbmprob[,1])
+hist(predictionsgbmprob[,2])
+predictionsgbmprob<- ifelse(predictionsgbmprob$`1` >=0.3,1,0)
+confusionMatrix(predictionsgbmprob,testset1$target)
+```
+
+Plotting the curve showing Sensitivity vs. Specificity
+```{r}
+performanceGbmc<-prediction(predictionsgbmprob,testset1$target)
+performanceGbmcROC<-performance(performanceGbmc, measure = "spec",x.measure = "sens")
+plot(performanceGbmcROC)
+
+```
+
+# Regression Logistic
+
+In this part, I will use a binomial logistic regression since the variable to predict is binary ( you should remember we have used a mutinomial logistic model in the part 1)
+
+Let's fit the logistic model
+```{r log model}
+set.seed(3004)
+modelLog <- glm(target ~.,family=binomial(link='logit'),data=trainset1)
+summary(modelLog)
+#saveRDS(modelLog,"E:/Project Resil/medi 1/Logmodel.rds")
+```
+
+We can see that 'ENT_TYPGRPEGROUPE REGIONAL', 'ENT_DR2' , 'ENT_DR3', 'ENT_DR6','ENT_TOPMAIL','CTCO_DELAI_FM','CTAD_DELAI_INA','CTCO_NB_SIM','CTCO_DELAI_SIM','CTCO_DELAI_TELENTRANT' et 'AGE_MOYEN' are not statistically significant.
+
+A lowest p -value corresponds to a strong association of one variable with the likehood of having cancelled a contract.
+For example, the negative coeficient value ( -1.4) of TIERS_TOPCPT1 variable means that if all other variables are equal, client having a accountant is less likely to have canceled his contract. Having  an accountant reduce the log odds by 1.4 while a unit increase in CTAD_NB_FM increase the log odds of cancellation by 0.7.
+
+Note: in the target variabl, "résilié = 1" is used as reference, to check it we can use the following function:
+
+```{r}
+# checking reference value of the target
+contrasts(df2$target)
+```
+
+In other hand , the binomial logistic regression deal directly with categorical variables so that those variables are dummyfied for the model as you can see for example ENT_DR1 has been used as reference for the ENT_DR variable
+Lets'check it
+
+
+```{r}
+contrasts(df2$ENT_DR)
+
+```
+
+
+ANOVA analysis
+```{r }
+anova(modelLog, test = "Chisq")
+# or see by ordering the results
+drop1(modelLog,test = "Chisq")
+# see Mc Faden indicator
+library(pscl)
+pR2(modelLog)
+```
+Let's make predictions with Logistic model
+
+```{r fit log model}
+# Predictions Logistic Model/ with thresold=0.5 probability : if P(y=1/X)>0.5 ( decision boundary); type= reponse gives probabilities P(y=1), making type= 'classe' gives 0 or 1
+predictionLog<- predict(modelLog, newdata = testset1[,1:40],type = "response")
+head(predictionLog,2)
+ ```
+ 
+ 
+Creating the decision boundary =0.5; however this threshold can be ajusted  
+```{r}
+resultLog<- ifelse(predictionLog>0.5,1,0)
+```
+
+
+Checking the model accuracy
+```{r}
+misClassiferror<- mean(resultLog!=testset1$target)
+print(paste('Accuracy',1-misClassiferror))
+
+conf.matrix <- table(resultLog,testset1$target)
+rownames(conf.matrix) <- paste("Pred", rownames(conf.matrix), sep = "=")
+colnames(conf.matrix) <- paste("Obs", colnames(conf.matrix), sep = "=")
+print(conf.matrix)
+```
+
+```{r}
+confusionMatrix(resultLog,testset1$target)
+```
+Note:  poor specificity rate
+
+Making ROC 
+```{r roc et auc}
+library(ROCR)
+performanceLog<-prediction(predict(modelLog, newdata = testset1[,1:40],type = "response"),testset1$target)
+performanceLogplot<-performance(performanceLog, measure = "tpr",x.measure = "fpr")
+plot(performanceLogplot)
+
+```
+Compute the AUC/ Note: a good predictive ability should have an AUC closer to 1 than to 0.5
+```{r}
+auc<- performance(performanceLog,measure = "auc")
+auc<-auc@y.values[[1]]
+auc 
+```
+
+Trying to improve the specificity score by tuning the threshold( to increase the True Positive for the class 1 = resilie)
+```{r}
+# fix the threshold=0.1, since the data is high imbalanced
+resultLog1<- ifelse(predictionLog>0.3,1,0)
+misClassiferror1<- mean(resultLog1!=testset1$target)
+print(paste('Accuracy',1-misClassiferror1))
+confusionMatrix(resultLog1,testset1$target)
+```
+The model's predictive ability has been improved in terms of the class 1 ( résiliés), and again at the cost of the one related to the class 0 ( non résiliés); TP/TP+FP increased . The specificity rate has been slightly increased and the model still gives a correct accuracy.
+
+Sensitivity vs. Specificity Plot
+
+```{r}
+performanceLog<-prediction(resultLog1,testset1$target)
+performanceLogROC<-performance(performanceLog, measure = "spec",x.measure = "sens")
+plot(performanceLogROC)
+
+```
+
+
+# Random Over Sampling (ROSE package)
+We have used technique tunning  thresholds explicity so that the resulting preditions give more accurate specificity rate.
+
+We now would like to try the ROSE ( Random Over Sampling Examples ) package for making predictions in artificial data generated by this method.
+
+Loading the package and resampling the data
+
+```{r}
+library(ROSE)
+trainset.rose<-ROSE(target~ .,data = trainset1,seed=3)$data
+testset.rose<- ROSE(target~., data = testset1,seed = 1)$data
+```
+
+Making some checks
+```{r}
+dim(trainset.rose)
+dim(testset.rose)
+table(trainset.rose$target)
+table(testset.rose$target)
+
+```
+
+Fiting the model by using Naive Bayes algorithm
+```{r}
+set.seed(0505)
+modeltNBrose<-train(target~., data=trainset.rose, trControl=train_control, method="nb")
+
+print(modeltNBrose)
+#saveRDS(modeltNBrose,"E:/Project Resil/medi 1/NBRosemodel.rds")
+```
+
+Making predictions
+
+```{r}
+#make predictions
+predictions.rose <- predict(modeltNBrose, testset.rose[,1:40])
+
+```
+
+And checking prediction results
+
+```{r}
+confusionMatrix(predictions.rose,testset.rose[,41])
+
+```
+
+# Model Selection
+
+We will evaluate the performance of models throught 3 metrics: Accuracy, Sensitivity and Specificity.
+
+- Sensitivity : the fraction of the non cancelled contracts correctly identified; True positive ( class 0)/ (True positive + False negative)
+
+- Specificity: the fraction of the cancelled contracts correctly identified ;True negative ( class 1)/ True negative+ Fals positive; This metric is important for us.
+
+- Accuracy: the fraction of all contracts correctly identified
+
+
+```{r}
+Tree<-confusionMatrix(predictionstreeprob,y_test)
+Bagging<-confusionMatrix(predictions.bagprob,testset1$target)
+RF<-confusionMatrix(predictionsRFprob,testset1$target)
+Gbm<-confusionMatrix(predictionsboost,testset1$target)
+Adaboost<-confusionMatrix(predictionsAdaboost,testset1$target)
+Gbmcaret<-confusionMatrix(predictionsgbmprob,testset1$target)
+Rose<-confusionMatrix(predictions.rose,testset.rose[,41])
+Logistic<- confusionMatrix(resultLog1,testset1$target)
+
+```
+
+Let's check the performance of each model by 3 following metrics: Accuracy, Sensitivity and Specificity.
+
+
+```{r}
+md<- data.frame(Tree_model= c(Tree$overall[1],Tree$byClass[1],Tree$byClass[2]),
+                Bagging=c(Bagging$overall[1],Bagging$byClass[1],Bagging$byClass[2]),
+                Random_Forest=c(RF$overall[1],RF$byClass[1],RF$byClass[2]),
+                Gr.Boosting = c(Gbm$overall[1],Gbm$byClass[1],Gbm$byClass[2]), 
+                Adaboost= c(Adaboost$overall[1], Adaboost$byClass[1],Adaboost$byClass[2]),
+                G.Boosting_car=c(Gbmcaret$overall[1],Gbmcaret$byClass[1],Gbmcaret$byClass[2]),
+                Rose_N.Bayes=c(Rose$overall[1],Rose$byClass[1],Rose$byClass[2]),
+                Logistic_Reg= c(Logistic$overall[1],Logistic$byClass[1],Logistic$byClass[2]))
+
+md<-data.frame(t(md))
+
+print(md)
+
+```
+
+
+And let's take a look at these accuracy metrics by using plot 3D
+```{r fig.width= 12, fig.height=10}
+library(scatterplot3d)
+colours<-c('red','skyblue','orange','blue','darkgreen','orangered','violetred 4','darkorchid1')
+md$colours<-colours
+with(md, {s3d<- scatterplot3d(Accuracy,Sensitivity,Specificity,color = colours,type='h',lty.hplot = 2,main = '3-D scatterplot Model Accuracy',
+xlab = 'Accuracy',ylab='Sensitivity',zlab='Specificity')
+s3d.coords<-s3d$xyz.convert( Accuracy,Sensitivity,Specificity)
+text(s3d.coords$x,s3d.coords$y,labels = row.names(md),pos=3,cex=.6)
+legend("topright",inset=.05,bty = "n",cex=.7,title = "Models",c('Tree_model','Bagging', 'Random_Forest','Gr.Boosting','Adaboost','G.Boosting_car','Rose_N.Bayes','Logistic_Reg'),
+fill = c('red','skyblue','orange','blue','darkgreen','orangered','violetred 4','darkorchid1'))})
+
+```
+
+The figures show Gradien Boosting and Adaboost are the best models according to the selected metrics.
+
+
+# End Note
+
+In this section, I've pursued our organization 's Data project by trying to apply somme Data Analyse and Machine Learning techniques to the original data set.
+
+One of the aims was to detect more relevant informations which could be useful for our business understanding and strategy,throught the data we had selected. 
+
+The fist attemps with somme Machine Learning methods could allow us to put predictive approache into our data and get somme interesting and informative result.
+
+However, this Data project continues and we will be kepping it together maybe until the end of 2016 and the deployment of a final model.
+
+We also will able to test the performance of models in a data base that will be collected for a more recent period. 
+
+Finnaly, our next multidisciplinary  meeting should able us to make the best use of Data science approaches to the business aims that the project imposes.
+
+
+
