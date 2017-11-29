@@ -1,5 +1,5 @@
 ---
-title: ' Praticing Statistical Analysis &  Machine Learning Techniques- Cancellation
+title: ' Praticing Statistical Analysis &  Machine Learning Techniques- Churn
   Risks in Insurance Contracts-Part 2'
 author: "Antoine.T.PHAM/ Data Science Courses-DSSP 4/ Polytechnique Paris"
 date: "Mai-October 2016"
@@ -226,7 +226,7 @@ predictions <- predict(modeltree, x_test, type = 'class')
 # summarize results
 confusionMatrix(predictions, y_test)
 ```
-Note: good accuracy (0.93) but poor specificity rate (0.33). Note: we are interested in the model 's specificity rate = TP/(TP+FN); since it reflete the accuracy of the model regarding the class ' 1 = résiliés'.
+Note: good accuracy (0.93) but poor specificity rate (0.33). Note: we are interested in the model 's specificity rate = TP/(TP+FN); since it reflete the accuracy of the model regarding the class ' 1 = rÃ©siliÃ©s'.
 
 
 Let's visualising the tree and  parameters: complexity parameter(cp) and  size of tree
@@ -323,7 +323,7 @@ df2<-df1
 sapply(df2,function(x) sum(is.na(x)))
 ```
 
-Imputing 0 au Na's values; make sure that there is one missing value for a time variable ( délai) when the value of the number variable ( nombre) is equal to zero
+Imputing 0 au Na's values; make sure that there is one missing value for a time variable ( dÃ©lai) when the value of the number variable ( nombre) is equal to zero
 
 ```{r}
 df2[is.na(df2)]<-0
@@ -623,7 +623,7 @@ We can see that 'ENT_TYPGRPEGROUPE REGIONAL', 'ENT_DR2' , 'ENT_DR3', 'ENT_DR6','
 A lowest p -value corresponds to a strong association of one variable with the likehood of having cancelled a contract.
 For example, the negative coeficient value ( -1.4) of TIERS_TOPCPT1 variable means that if all other variables are equal, client having a accountant is less likely to have canceled his contract. Having  an accountant reduce the log odds by 1.4 while a unit increase in CTAD_NB_FM increase the log odds of cancellation by 0.7.
 
-Note: in the target variabl, "résilié = 1" is used as reference, to check it we can use the following function:
+Note: in the target variabl, "rÃ©siliÃ© = 1" is used as reference, to check it we can use the following function:
 
 ```{r}
 # checking reference value of the target
@@ -703,7 +703,7 @@ misClassiferror1<- mean(resultLog1!=testset1$target)
 print(paste('Accuracy',1-misClassiferror1))
 confusionMatrix(resultLog1,testset1$target)
 ```
-The model's predictive ability has been improved in terms of the class 1 ( résiliés), and again at the cost of the one related to the class 0 ( non résiliés); TP/TP+FP increased . The specificity rate has been slightly increased and the model still gives a correct accuracy.
+The model's predictive ability has been improved in terms of the class 1 ( rÃ©siliÃ©s), and again at the cost of the one related to the class 0 ( non rÃ©siliÃ©s); TP/TP+FP increased . The specificity rate has been slightly increased and the model still gives a correct accuracy.
 
 Sensitivity vs. Specificity Plot
 
